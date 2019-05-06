@@ -31,14 +31,14 @@ typedef struct node {
 // Jobs functions
 job_t create_job(int id, int pid, int fg, char* status, char command[MAX_LENGTH_COMMAND]);
 void print_job(job_t *job);
-int get_pipe_args(char *command, int **pfd, char ***parts);
+int* get_pipe_args(char *command, int **pfd, char ****tokens);
 
 // Util functions
 int split_string(char string[], char delim[], char*** result);
 void sigint_handler(int signal);
 void sigtstp_handler(int signal);
 void sigchld_handler(int signal);
-void user_input(char command[MAX_LENGTH_COMMAND]);
+void user_input(char *command);
 int get_new_id();
 void program_exit();
 
@@ -59,7 +59,7 @@ int job_len = 0;
 
 int main(int argc, char** argv) {
     char command[MAX_LENGTH_COMMAND];
-    char **tokens_a, **tokens_b, **tmp_split, **running_command, **tokens[2], **parts;
+    char **tokens_a, **tokens_b, **tmp_split, **running_command, ***tokens, **parts;
     char *e, *tmp_com;
     int token_len, i, j, a, pipe_len, stop_count, status;
     int *pfd, *lengths; 
@@ -119,11 +119,10 @@ int main(int argc, char** argv) {
                 *parent_job = create_job(get_new_id(), getpid(), !background, "Running", command);
                 push(jobs,parent_job);
                 
-                printf("\n");
+                //printf("HOLA\n");
                 // Get arguments for pipe
-                pipe_len = get_pipe_args(command, &pfd, &parts);
-                printf("1: %s\n2: %s\n", parts[0], parts[1]);
-                printf("pfd[0]: %d, pfd[1]: %d\n", pfd[0], pfd[1]);
+                lengths = get_pipe_args(command, &pfd, &tokens);
+                
                 //print_list(jobs);
                 exit(0);
             } else {
@@ -334,10 +333,20 @@ node_t remove_by_index(node_t **head, int n) {
     return *retval;
 }
 
-void user_input(char command[MAX_LENGTH_COMMAND]) {
+void user_input(char *command) {
+    int count = 0;
+    char c;
+
     printf("# ");
     fgets(command, MAX_LENGTH_COMMAND, stdin);
+    /*do {
+        c = getchar();
+        command[count] = c;
+        count++;
+    } while(c != '\n');
+*/
     fflush(stdin);
+    fflush(stdout);
 }
 
 job_t create_job(int id, int pid, int fg, char* status, char command[MAX_LENGTH_COMMAND]) {
@@ -372,21 +381,33 @@ int init_linked_list(node_t **head) {
     (*head)->next = NULL;
 }
 
-int get_pipe_args(char *command, int **pfd, char ***parts) {
-    char **tmp_split, *tmp_com;
+int* get_pipe_args(char *command, int **pfd, char ****tokens) {
+    char **tmp_split, **tmp, *tmp_com;
+    int *lengths;
+    int i;
 
-    strcpy(tmp_com, command);
-    *parts = (char **) malloc(2*sizeof(char *));
+    tmp_com = command;
+    *tokens = (char ***) malloc(2*sizeof(char **));
     *pfd = (int *) malloc(2*sizeof(int));
+    lengths = (int *) malloc(2*sizeof(int));
 
     if(strstr(tmp_com, "|") != NULL) {
         split_string(tmp_com, "|", &tmp_split);
-        *parts = tmp_split;
+        for(i = 0; i < 2; i++) {
+            int len = split_string(tmp_split[i], " ", &tmp);
+            (*tokens)[i] = (char **) malloc(len*sizeof(char *));
+            (*tokens)[i] = tmp;
+            lengths[i] = len;
+        }
         pipe(*pfd);
-        return 2;
     } else {
-        *parts[0] = tmp_com;
-        *parts[1] = NULL;
-        return 1;
+        int len = split_string(tmp_com, " ", &tmp);
+        (*tokens)[0] = (char **) malloc(len*sizeof(char *));
+        (*tokens)[0] = tmp;
+        (*tokens)[1] = NULL;
+        lengths[0] = len;
+        lengths[1] = -1;
     }
+    
+    return lengths;
 }
