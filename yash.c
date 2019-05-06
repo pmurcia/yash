@@ -28,8 +28,7 @@ typedef struct node {
     struct node *next;
 } node_t;
 
-// Jobs variables
-node_t jobs[MAX_NUMBER_JOBS];
+// Job variables
 node_t last_process;
 
 // Jobs functions
@@ -46,6 +45,7 @@ int get_new_id();
 void program_exit();
 
 // List functions
+int init_linked_list(node_t **head);
 void print_list(node_t *head);
 void push(node_t *head, job_t *val);
 node_t pop(node_t **head);
@@ -62,18 +62,25 @@ int job_len = 0;
 int main(int argc, char** argv) {
     char command[MAX_LENGTH_COMMAND];
     char **tokens_a, **tokens_b, **tmp_split, **running_command, **tokens[2];
-    char *e;
+    char *e, *tmp_com;
     int token_len, i, j, a, command_len, stop_count, status;
     int pfd[2], len_join[2]; 
     int fd_write, fd_read, fd_error, null_file;
     int background;
     pid_t cpid[2], cpid2, cpid3, cpid_grp;
 
-    job_t parent_job;
+    // Job variables
+    job_t *parent_job;
+    
+    // Linked list
+    node_t *head = NULL;
 
     // Signal handling
     signal(SIGINT, sigint_handler);
     signal(SIGTSTP, sigtstp_handler);
+
+    // Initialize linked list
+    init_linked_list(&head);
     
     while(1) {
         // Clears command string
@@ -96,22 +103,22 @@ int main(int argc, char** argv) {
             }
 
             // Check if 'exit' was introduced
-            if(strcmp(strtok(command," "), "exit") == 0)
+            strcpy(tmp_com, command);
+            if(strcmp(strtok_r(tmp_com," ",&tmp_com), "exit") == 0)
                 program_exit();
-
+            
             // Checks whether it should be run in background
             background = command[strlen(command)-1] == '&';
 
             // Create parent job
-            parent_job = create_job(get_new_id(), getpid(), !background, "Running", command);
-            
-            //printf("Single job\n");
-            print_job(&parent_job);
+            parent_job = (job_t*)malloc(sizeof(job_t));
+            *parent_job = create_job(get_new_id(), getpid(), !background, "Running", command);
 
             // Push the job to the list
-            //push(jobs,&parent_job);
+            push(head,parent_job);
 
-            //print_list(jobs);  
+            // Print list of jobs
+            print_list(head);  
         }
     }
     return 0;
@@ -212,13 +219,14 @@ void print_job(job_t *job) {
  * Description: takes a list, and prints all the values in it
  * */
 void print_list(node_t *head) {
-    node_t *current = head;
+    node_t *current = head->next;       // First element is NULL, because data starts in the second entry
     job_t *current_job;
 
+    current_job = (job_t *)malloc(sizeof(job_t));
+
     while (current != NULL) {
-        // TODO Print data
         current_job = current->val;
-        print_job(current_job);
+        print_job(current->val);
         current = current->next;
     }
 }
@@ -229,8 +237,9 @@ void print_list(node_t *head) {
  * */
 void push(node_t *head, job_t *val) {
     node_t *current = head;
-    while (current->next != NULL)
+    while (current->next != NULL) {
         current = current->next;
+    }
 
     /* now we can add a new variable */
     current->next = malloc(sizeof(node_t));
@@ -341,4 +350,13 @@ int get_new_id() {
 void program_exit() {
     printf("Exiting yash...\n");
     exit(0);
+}
+
+int init_linked_list(node_t **head) {
+    *head = malloc(sizeof(node_t));
+    if (*head == NULL) {
+        return -1;
+    }
+
+    (*head)->next = NULL;
 }
