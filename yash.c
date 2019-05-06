@@ -35,6 +35,7 @@ void push(node_t * head, int val);
 int pop(node_t ** head);
 int remove_last(node_t * head);
 int remove_by_index(node_t ** head, int n);
+void user_input(char command[MAX_LENGTH_COMMAND]);
 
 pid_t current_fg = -1;
 pid_t child_id = -1;
@@ -62,10 +63,7 @@ int main(int argc, char** argv) {
         strcpy(command, "");
 
         // Prints the main prompt (# ) and then waits for user input
-        printf("# ");
-        fgets(command, MAX_LENGTH_COMMAND, stdin);
-        fflush(stdin);
-        fflush(stdout);
+        user_input(command);
 
         if(feof(stdin)) {
             // ^D was input
@@ -330,4 +328,11 @@ void print_list(node_t list[]) {
 
         printf("%s\t%s\n", list[i].status, list[i].command);
     }
+}
+
+void user_input(char command[MAX_LENGTH_COMMAND]) {
+    printf("# ");
+    fgets(command, MAX_LENGTH_COMMAND, stdin);
+    fflush(stdin);
+    fflush(stdout);
 }
