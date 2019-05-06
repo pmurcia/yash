@@ -28,12 +28,10 @@ typedef struct node {
     struct node *next;
 } node_t;
 
-// Job variables
-node_t last_process;
-
 // Jobs functions
 job_t create_job(int id, int pid, int fg, char* status, char command[MAX_LENGTH_COMMAND]);
 void print_job(job_t *job);
+int get_pipe_args(char *command, int **pfd, char ***parts);
 
 // Util functions
 int split_string(char string[], char delim[], char*** result);
@@ -61,10 +59,10 @@ int job_len = 0;
 
 int main(int argc, char** argv) {
     char command[MAX_LENGTH_COMMAND];
-    char **tokens_a, **tokens_b, **tmp_split, **running_command, **tokens[2];
+    char **tokens_a, **tokens_b, **tmp_split, **running_command, **tokens[2], **parts;
     char *e, *tmp_com;
-    int token_len, i, j, a, command_len, stop_count, status;
-    int pfd[2], len_join[2]; 
+    int token_len, i, j, a, pipe_len, stop_count, status;
+    int *pfd, *lengths; 
     int fd_write, fd_read, fd_error, null_file;
     int background;
     pid_t cpid[2], cpid2, cpid3, cpid_grp;
@@ -72,16 +70,17 @@ int main(int argc, char** argv) {
     // Job variables
     job_t *parent_job;
     
-    // Linked list
-    node_t *head = NULL;
+    // Linked lists
+    node_t *jobs = NULL;
 
     // Signal handling
     signal(SIGINT, sigint_handler);
     signal(SIGTSTP, sigtstp_handler);
 
     // Initialize linked list
-    init_linked_list(&head);
+    init_linked_list(&jobs);
     
+    // Infinite loop in charge of the program
     while(1) {
         // Clears command string
         strcpy(command, "");
@@ -89,7 +88,7 @@ int main(int argc, char** argv) {
         // Prints the main prompt (# ) and then waits for user input
         user_input(command);
 
-        if(feof(stdin) || (strcmp(command, "exit") == 0)) {
+        if(feof(stdin)) {
             // ^D was input
             printf("\n");
             program_exit();
@@ -106,19 +105,31 @@ int main(int argc, char** argv) {
             strcpy(tmp_com, command);
             if(strcmp(strtok_r(tmp_com," ",&tmp_com), "exit") == 0)
                 program_exit();
-            
-            // Checks whether it should be run in background
-            background = command[strlen(command)-1] == '&';
 
-            // Create parent job
-            parent_job = (job_t*)malloc(sizeof(job_t));
-            *parent_job = create_job(get_new_id(), getpid(), !background, "Running", command);
+            // Create process for the command executed
+            cpid_grp = fork();
+            if(cpid_grp == 0) {
+                // Process executing the command
 
-            // Push the job to the list
-            push(head,parent_job);
+                // Checks whether it should be run in background
+                background = command[strlen(command)-1] == '&';
 
-            // Print list of jobs
-            print_list(head);  
+                // Create parent job, and push it to the list
+                parent_job = (job_t*)malloc(sizeof(job_t));
+                *parent_job = create_job(get_new_id(), getpid(), !background, "Running", command);
+                push(jobs,parent_job);
+                
+                printf("\n");
+                // Get arguments for pipe
+                pipe_len = get_pipe_args(command, &pfd, &parts);
+                printf("1: %s\n2: %s\n", parts[0], parts[1]);
+                printf("pfd[0]: %d, pfd[1]: %d\n", pfd[0], pfd[1]);
+                //print_list(jobs);
+                exit(0);
+            } else {
+                // Process running yash
+                wait((int*) NULL);
+            }
         }
     }
     return 0;
@@ -126,7 +137,7 @@ int main(int argc, char** argv) {
 
 /** 
  * Name: split_string
- * Description: takes a string and divides it into substrings in the specified string
+ * Description: takes a string and divides it into substrings in the specified string, returning the number of tokens
  * Source: Codingame 
  * URL: https://www.codingame.com/playgrounds/14213/how-to-play-with-strings-in-c/string-split
 */
@@ -173,7 +184,7 @@ int split_string(char string[], char delim[], char*** result) {
  * Description: handles the exception caused by the signal SIGINT (^C)
 */
 void sigint_handler(int signal) {
-    //printf("Caught signal %d\n", signal);
+    printf("Caught signal SIGINT %d\n", signal);
     if(current_fg != -1) {
         kill(current_fg, SIGKILL);
         printf("\n");
@@ -185,7 +196,7 @@ void sigint_handler(int signal) {
  * Description: handles the exception caused by the signal SIGTSTP (^Z)
 */
 void sigtstp_handler(int signal) {
-    //printf("Caught signal %d\n", signal);
+    //printf("Caught signal SIGTSTP %d\n", signal);
      if(current_fg != -1) {
         printf("\n");
         kill(current_fg, SIGTSTP);
@@ -209,6 +220,7 @@ void sigchld_handler(int signal) {
  * */
 void print_job(job_t *job) {
     printf("[%d]", job->id);
+    printf("%d", job->pid);
     job->fg == 1 ? printf(" + ") : printf(" - ");
     printf("%s\t", job->status);
     printf("%s\n", job->command);
@@ -326,7 +338,6 @@ void user_input(char command[MAX_LENGTH_COMMAND]) {
     printf("# ");
     fgets(command, MAX_LENGTH_COMMAND, stdin);
     fflush(stdin);
-    fflush(stdout);
 }
 
 job_t create_job(int id, int pid, int fg, char* status, char command[MAX_LENGTH_COMMAND]) {
@@ -359,4 +370,23 @@ int init_linked_list(node_t **head) {
     }
 
     (*head)->next = NULL;
+}
+
+int get_pipe_args(char *command, int **pfd, char ***parts) {
+    char **tmp_split, *tmp_com;
+
+    strcpy(tmp_com, command);
+    *parts = (char **) malloc(2*sizeof(char *));
+    *pfd = (int *) malloc(2*sizeof(int));
+
+    if(strstr(tmp_com, "|") != NULL) {
+        split_string(tmp_com, "|", &tmp_split);
+        *parts = tmp_split;
+        pipe(*pfd);
+        return 2;
+    } else {
+        *parts[0] = tmp_com;
+        *parts[1] = NULL;
+        return 1;
+    }
 }
