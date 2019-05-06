@@ -43,6 +43,7 @@ void sigtstp_handler(int signal);
 void sigchld_handler(int signal);
 void user_input(char command[MAX_LENGTH_COMMAND]);
 int get_new_id();
+void program_exit();
 
 // List functions
 void print_list(node_t *head);
@@ -81,10 +82,10 @@ int main(int argc, char** argv) {
         // Prints the main prompt (# ) and then waits for user input
         user_input(command);
 
-        if(feof(stdin)) {
+        if(feof(stdin) || (strcmp(command, "exit") == 0)) {
             // ^D was input
-            printf("\nExiting yash...\n");
-            exit(0);
+            printf("\n");
+            program_exit();
         } else if(strcmp(command, "\n") != 0) {
             // Clear '\n' from the string 
             for(i = 0; i < strlen(command); i++) {
@@ -94,15 +95,23 @@ int main(int argc, char** argv) {
                 }
             }
 
+            // Check if 'exit' was introduced
+            if(strcmp(strtok(command," "), "exit") == 0)
+                program_exit();
+
             // Checks whether it should be run in background
             background = command[strlen(command)-1] == '&';
 
             // Create parent job
             parent_job = create_job(get_new_id(), getpid(), !background, "Running", command);
+            
+            //printf("Single job\n");
             print_job(&parent_job);
 
-            //print_job(parent_job);
-            
+            // Push the job to the list
+            //push(jobs,&parent_job);
+
+            //print_list(jobs);  
         }
     }
     return 0;
@@ -327,4 +336,9 @@ int get_new_id() {
     int id = job_id;
     job_id++;
     return id;
+}
+
+void program_exit() {
+    printf("Exiting yash...\n");
+    exit(0);
 }
