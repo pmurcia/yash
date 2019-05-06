@@ -32,12 +32,17 @@ typedef struct node {
 node_t jobs[MAX_NUMBER_JOBS];
 node_t last_process;
 
+// Jobs functions
+job_t create_job(int id, int pid, int fg, char* status, char command[MAX_LENGTH_COMMAND]);
+void print_job(job_t *job);
+
 // Util functions
 int split_string(char string[], char delim[], char*** result);
 void sigint_handler(int signal);
 void sigtstp_handler(int signal);
 void sigchld_handler(int signal);
 void user_input(char command[MAX_LENGTH_COMMAND]);
+int get_new_id();
 
 // List functions
 void print_list(node_t *head);
@@ -50,7 +55,7 @@ pid_t current_fg = -1;
 pid_t child_id = -1;
 pid_t last_stopped, last_background;
 
-int job_id = 0;
+int job_id = 1;
 int job_len = 0;
 
 int main(int argc, char** argv) {
@@ -62,6 +67,8 @@ int main(int argc, char** argv) {
     int fd_write, fd_read, fd_error, null_file;
     int background;
     pid_t cpid[2], cpid2, cpid3, cpid_grp;
+
+    job_t parent_job;
 
     // Signal handling
     signal(SIGINT, sigint_handler);
@@ -88,9 +95,14 @@ int main(int argc, char** argv) {
             }
 
             // Checks whether it should be run in background
-            if(command[strlen(command)-1] == '&') {
-                printf("BACKGROUND\n");
-            }
+            background = command[strlen(command)-1] == '&';
+
+            // Create parent job
+            parent_job = create_job(get_new_id(), getpid(), !background, "Running", command);
+            print_job(&parent_job);
+
+            //print_job(parent_job);
+            
         }
     }
     return 0;
@@ -176,6 +188,17 @@ void sigchld_handler(int signal) {
 }
 
 /**
+ * Name: print_job
+ * Description: prints a job
+ * */
+void print_job(job_t *job) {
+    printf("[%d]", job->id);
+    job->fg == 1 ? printf(" + ") : printf(" - ");
+    printf("%s\t", job->status);
+    printf("%s\n", job->command);
+}
+
+/**
  * Name: print_list
  * Description: takes a list, and prints all the values in it
  * */
@@ -186,10 +209,7 @@ void print_list(node_t *head) {
     while (current != NULL) {
         // TODO Print data
         current_job = current->val;
-        printf("[%d]", current_job->id);
-        current_job->fg == 1 ? printf(" + ") : printf(" - ");
-        printf("%s\t", current_job->status);
-        printf("%s\n", current_job->command);
+        print_job(current_job);
         current = current->next;
     }
 }
@@ -289,4 +309,22 @@ void user_input(char command[MAX_LENGTH_COMMAND]) {
     fgets(command, MAX_LENGTH_COMMAND, stdin);
     fflush(stdin);
     fflush(stdout);
+}
+
+job_t create_job(int id, int pid, int fg, char* status, char command[MAX_LENGTH_COMMAND]) {
+    job_t job;
+
+    job.id = id;
+    job.pid = pid;
+    job.fg = fg;
+    job.status = status;
+    strcpy(job.command,command);
+
+    return job;
+}
+
+int get_new_id() {
+    int id = job_id;
+    job_id++;
+    return id;
 }
