@@ -49,29 +49,29 @@ void push(node_t *head, job_t *val);
 node_t pop(node_t **head);
 node_t remove_last(node_t *head);
 node_t remove_by_index(node_t **head, int n);
+int list_length(node_t *head);
 
 pid_t current_fg = -1;
 pid_t child_id = -1;
-pid_t last_stopped, last_background;
+
+job_t *current, *last_stopped;
+
+node_t *jobs;
 
 int job_id = 1;
-int job_len = 0;
 
 int main(int argc, char** argv) {
     char command[MAX_LENGTH_COMMAND];
     char **tokens_a, **tokens_b, **tmp_split, **running_command, ***tokens, **parts;
     char *e, *tmp_com;
-    int token_len, i, j, a, pipe_len, stop_count, status;
+    int token_len, i, j, a, pipe_len, stop_count, status, job_len;
     int *pfd, *lengths; 
     int fd_write, fd_read, fd_error, null_file;
     int background;
     pid_t cpid[2], cpid2, cpid3, cpid_grp;
 
     // Job variables
-    job_t *parent_job;
-    
-    // Linked lists
-    node_t *jobs = NULL;
+    //job_t *parent_job, *job;
 
     // Signal handling
     signal(SIGINT, sigint_handler);
@@ -115,16 +115,107 @@ int main(int argc, char** argv) {
                 background = command[strlen(command)-1] == '&';
 
                 // Create parent job, and push it to the list
-                parent_job = (job_t*)malloc(sizeof(job_t));
-                *parent_job = create_job(get_new_id(), getpid(), !background, "Running", command);
-                push(jobs,parent_job);
+                job_t *job = NULL;
+                job = (job_t*) malloc(sizeof(job_t));
+                *job = create_job(get_new_id(), getpid(), !background, "Running", command);
+
+                current = job;
                 
-                //printf("HOLA\n");
-                // Get arguments for pipe
+                // Get arguments for pipe and token separation
                 lengths = get_pipe_args(command, &pfd, &tokens);
-                
-                //print_list(jobs);
-                exit(0);
+
+                // Special commands
+                if(!strcmp(tokens[0][0],"jobs")) {
+                    print_list(jobs);
+                } else if(!strcmp(tokens[0][0],"fg")){
+                    
+                } else if(!strcmp(tokens[0][0],"bg")){
+                    
+                } else {
+                    // Regular command
+                    push(jobs,job);
+                    
+                    // Execute command
+                    for(a = 0; a < 2 && lengths[a] != -1; a++) {
+                        cpid[a] = fork();
+                        if(cpid[a] == 0) {
+                            child_id = getpid();
+                            if(lengths[a] == 2) {
+                                if(a == 0) {
+                                    close(pfd[0]);
+                                    dup2(pfd[1], STDOUT_FILENO);
+                                    setsid();
+                                } else if(a == 1) {
+                                    close(pfd[1]);
+                                    dup2(pfd[0], STDIN_FILENO);
+                                    setpgid(0, cpid_grp);
+                                }
+                            }
+
+                            dup2(open("/dev/null", O_WRONLY), STDERR_FILENO);
+                            stop_count = 0;
+                            j = 0;
+                            // Redirection: next, change redirections
+                            for(i = 0 ; i < lengths[a]; i++) {
+                                if(!strcmp(tokens[a][i],"<")) {
+                                    // Input change
+                                    fd_read = open(tokens[a][i+1], O_RDONLY);
+                                    if(fd_read != -1)
+                                        dup2(fd_read, STDIN_FILENO);
+                                    else {
+                                        perror("Error");
+                                        exit(-1);
+                                    }
+                                    
+                                    stop_count = 1;
+                                    //close(fd_read);
+                                } else if(!strcmp(tokens[a][i],">")) {
+                                    // Output change
+                                    fd_write = open(tokens[a][i+1], O_CREAT|O_WRONLY|O_TRUNC, FILE_PERMISSIONS);
+                                    dup2(fd_write, STDOUT_FILENO);
+                                    stop_count = 1;
+                                    //close(fd_write);
+                                } else if(!strcmp(tokens[a][i],"2>")) {
+                                    // Error Output change
+                                    fd_error = open(tokens[a][i+1], O_CREAT|O_WRONLY|O_TRUNC, FILE_PERMISSIONS);
+                                    dup2(fd_error, STDERR_FILENO);
+                                    stop_count = 1;
+                                    //close(fd_error);
+                                } else {
+                                    if(stop_count == 0)
+                                        j++;
+                                }
+                            }
+                            
+                            running_command = malloc(sizeof(char *) * j);
+                            for(i = 0; i < j; i++) {
+                                running_command[i] = malloc(sizeof(char) * MAX_LENGTH_TOKEN);
+                                strcpy(running_command[i], tokens[a][i]);
+                            } 
+
+                            cpid2 = fork();
+                            if(cpid2 == 0) {
+                                child_id = getpid();
+                                execvp(running_command[0], running_command);
+                            } else
+                                wait((int *) NULL);
+
+                            //perror("Parent finished");
+                            close(fd_read);
+                            close(fd_write);
+                            close(fd_error);
+
+                            exit(0);
+                        } else {
+                            // Parent process
+                            wait((int *) NULL);   
+                        }
+                        
+                        // For output redirection
+                        dup2(STDOUT_FILENO, pfd[1]);
+                    }
+                }
+                //exit(0);
             } else {
                 // Process running yash
                 wait((int*) NULL);
@@ -183,10 +274,10 @@ int split_string(char string[], char delim[], char*** result) {
  * Description: handles the exception caused by the signal SIGINT (^C)
 */
 void sigint_handler(int signal) {
-    printf("Caught signal SIGINT %d\n", signal);
-    if(current_fg != -1) {
-        kill(current_fg, SIGKILL);
+    if(current != NULL) {
         printf("\n");
+        kill(current->pid, SIGKILL);
+        current = NULL;
     }
 }
 
@@ -196,10 +287,12 @@ void sigint_handler(int signal) {
 */
 void sigtstp_handler(int signal) {
     //printf("Caught signal SIGTSTP %d\n", signal);
-     if(current_fg != -1) {
+     if(current != NULL) {
         printf("\n");
-        kill(current_fg, SIGTSTP);
-        kill(current_fg, SIGKILL);
+        kill(current->pid, SIGTSTP);
+        last_stopped = current;
+        current = NULL;
+        kill(current->pid, SIGKILL);
     }
 }
 
@@ -219,7 +312,6 @@ void sigchld_handler(int signal) {
  * */
 void print_job(job_t *job) {
     printf("[%d]", job->id);
-    printf("%d", job->pid);
     job->fg == 1 ? printf(" + ") : printf(" - ");
     printf("%s\t", job->status);
     printf("%s\n", job->command);
@@ -410,4 +502,14 @@ int* get_pipe_args(char *command, int **pfd, char ****tokens) {
     }
     
     return lengths;
+}
+
+int list_length(node_t *head) {
+    node_t *current = head;
+    int len = 0;
+
+    while (current->next != NULL)
+        len++;
+
+    return len;
 }
