@@ -79,9 +79,18 @@ int main(int argc, char** argv) {
             printf("\nExiting yash...\n");
             exit(0);
         } else if(strcmp(command, "\n") != 0) {
-            printf("Not empty\n");
+            // Clear '\n' from the string 
+            for(i = 0; i < strlen(command); i++) {
+                if(command[i] == '\n') {
+                    command[i] = '\0';
+                    break;
+                }
+            }
 
-            
+            // Checks whether it should be run in background
+            if(command[strlen(command)-1] == '&') {
+                printf("BACKGROUND\n");
+            }
         }
     }
     return 0;
