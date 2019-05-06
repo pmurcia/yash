@@ -37,6 +37,7 @@ int split_string(char string[], char delim[], char*** result);
 void sigint_handler(int signal);
 void sigtstp_handler(int signal);
 void sigchld_handler(int signal);
+void user_input(char command[MAX_LENGTH_COMMAND]);
 
 // List functions
 void print_list(node_t *head);
@@ -71,10 +72,7 @@ int main(int argc, char** argv) {
         strcpy(command, "");
 
         // Prints the main prompt (# ) and then waits for user input
-        printf("# ");
-        fgets(command, MAX_LENGTH_COMMAND, stdin);
-        fflush(stdin);
-        fflush(stdout);
+        user_input(command);
 
         if(feof(stdin)) {
             // ^D was input
@@ -438,4 +436,11 @@ node_t remove_by_index(node_t **head, int n) {
     free(temp_node);
 
     return *retval;
+}
+
+void user_input(char command[MAX_LENGTH_COMMAND]) {
+    printf("# ");
+    fgets(command, MAX_LENGTH_COMMAND, stdin);
+    fflush(stdin);
+    fflush(stdout);
 }
