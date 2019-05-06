@@ -58,21 +58,25 @@ int main(int argc, char** argv) {
     signal(SIGTSTP, sigtstp_handler);
     
     while(1) {
-        // Prints the main prompt (# ) and then waits for user input
+        // Clears command string
         strcpy(command, "");
+
+        // Prints the main prompt (# ) and then waits for user input
         printf("# ");
         fgets(command, MAX_LENGTH_COMMAND, stdin);
         fflush(stdin);
         fflush(stdout);
 
-        if(feof(stdin) || strcmp(command, (char *) "exit") != 0) {
+        if(feof(stdin)) {
             // ^D was input
             printf("\nExiting yash...\n");
             exit(0);
         } else if(strcmp(command, "\n") != 0) {
             // We are not exiting, so we can continue with the application
-            if(command[strlen(command)] == '&')
-                background = 1;
+            if(command[strlen(command) - 1] == '&') {
+                //background = 1;
+                printf("BACKGROUND");
+            }
             // Clear \n
             for(i = 0; i < strlen(command); i++) {
                 if(command[i] == '\n')
