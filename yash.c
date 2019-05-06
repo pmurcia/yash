@@ -24,7 +24,7 @@ typedef struct job {
 
 // Linked list node
 typedef struct node {
-    job_t *val;
+    void *val;
     struct node *next;
 } node_t;
 
